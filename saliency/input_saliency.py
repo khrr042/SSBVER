@@ -33,7 +33,7 @@ def show_heatmap_on_image(img, mask):
 def main(args):
 
     _, _, num_train_classes = build_data(args)
-    student, teacher = build_models(args, num_classes=num_train_classes)
+    student, _, _ = build_models(args, num_classes=num_train_classes)
     ckpt = torch.load(args.test_ckpt)
     student.load_state_dict(ckpt[args.test_model], strict=False)
     print('{} model is loaded from {}'.format(args.test_model, args.test_ckpt))

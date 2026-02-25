@@ -67,8 +67,15 @@ def get_configs():
     # ----------------------------------------
     parser.add_argument('--model_arc', type=str, default='vit_small', 
                     choices=['vit_small', 'resnet50', 'resnet50_ibn_a', 
-                    'resnet101', 'vit_base', 'swin_base', 'convnext_base'])
+                    'resnet101', 'vit_base', 'swin_base', 'convnext_base',
+                    'mobilenetv3_small', 'mobilenetv3_large'])
+    parser.add_argument('--student_arc', type=str, default='',
+                help='student backbone architecture. empty uses --model_arc')
+    parser.add_argument('--teacher_exp_arc', type=str, default='',
+                help='frozen expert teacher architecture. empty uses student arc')
     parser.add_argument('--pretrained', type=bool_flag, default=False)
+    parser.add_argument('--teacher_exp_pretrained', type=bool_flag, default=True,
+                help='initialize frozen expert teacher with ImageNet weights when available')
     parser.add_argument('--pretrained_method', type=str, 
                             default='ImageNet', choices=['ImageNet', 'DINO'])
     parser.add_argument('--last_stride', type=int, default=1, 
@@ -124,6 +131,8 @@ def get_configs():
     # Training Configuration
     # ----------------------------------------
     parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--grad_accum_steps', default=1, type=int,
+                help='number of gradient accumulation steps')
     parser.add_argument('--epochs', default=120, type=int, 
                 help='Number of epochs of training.')
     parser.add_argument('--freeze_last_layer', default=1, type=int, 
@@ -132,6 +141,8 @@ def get_configs():
                 help='Base EMA parameter for teacher update')
     parser.add_argument('--output_dir', default=".", type=str, 
                 help='Path to save logs and checkpoints.')
+    parser.add_argument('--resume_ckpt', default='', type=str,
+                help='checkpoint path to resume training')
     parser.add_argument('--save_ckpt_freq', default=20, type=int, 
                 help='Save checkpoint every [] epochs.')
     parser.add_argument('--eval_freq', default=10, type=int, 
@@ -142,6 +153,13 @@ def get_configs():
                 help='weight of Compactness objective in training')
     parser.add_argument('--ssl_loss_lambda', type=float, default=1.0,
                 help='weight of ssl objective in training')
+    parser.add_argument('--kd_loss_lambda', type=float, default=0.0,
+                help='weight of frozen-teacher KD objective in training')
+    parser.add_argument('--kd_loss_type', type=str, default='cosine',
+                choices=['cosine', 'mse'],
+                help='type of feature KD loss')
+    parser.add_argument('--frozen_teacher_ckpt', type=str, default='',
+                help='optional checkpoint path for frozen teacher weights')
     parser.add_argument('-ssl_loss', type=bool_flag, default=False, 
                 help='whether to use ssl loss')
     parser.add_argument('--id_loss_lambda', type=float, default=1.0, 
@@ -192,6 +210,9 @@ def get_configs():
     # ----------------------------------------
     parser.add_argument('--device_ids', default='0,1', type=str)
     parser.add_argument('--is_train', default=False, type=bool_flag)
+    parser.add_argument('--train_mode', default='student_ema', type=str,
+                choices=['student_ema', 'teacher_exp_only'],
+                help='training mode: default student+ema, or train expert teacher only')
     parser.add_argument('--seed', default=0, type=int, 
                 help='Fix the random number generator seed')
     return parser

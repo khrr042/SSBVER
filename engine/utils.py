@@ -44,39 +44,64 @@ def train_one_epoch(args,
             epoch,
             train_loader,
             student,
-            teacher,
+            teacher_ema,
+            teacher_frozen,
             loss_fn,
             optimizer,
             lr_scheduler,
             logger, 
             writer=None):
     
-    student.train()
-    teacher.train()
+    if args.train_mode == 'teacher_exp_only':
+        student.eval()
+        teacher_ema.eval()
+        teacher_frozen.train()
+    else:
+        student.train()
+        teacher_ema.train()
+        teacher_frozen.eval()
     
     epoch_loss = 0
+    accum_steps = max(1, args.grad_accum_steps)
+    optimizer.zero_grad()
 
     for i, batch in enumerate(train_loader):
         iteration = epoch * len(train_loader) + i
         for j, param_group in enumerate(optimizer.param_groups):
             param_group["lr"] = lr_scheduler[epoch]
         
-        optimizer.zero_grad()
-
         images, vids, _ = batch
         images = [im.cuda(non_blocking=True) for im in images]
         vids = vids.cuda()
 
-        teacher_ssl_output = teacher(images[:2])
-        student_ssl_output, student_reid_output, vids1 = student(images, vids)
-        cls_scores, feats = student_reid_output
+        if args.train_mode == 'teacher_exp_only':
+            teacher_feat = teacher_frozen(torch.cat(images[:2], dim=0))
+            teacher_module = teacher_frozen.module if hasattr(teacher_frozen, 'module') else teacher_frozen
+            cls_scores, feats = teacher_module.reid_head(teacher_feat)
+            vids1 = vids.repeat(2)
+            teacher_ssl_output = None
+            student_ssl_output = None
+            student_kd_feat = None
+            teacher_kd_feat = None
+        else:
+            teacher_ssl_output = teacher_ema(images[:2])
+            student_ssl_output, student_reid_output, vids1 = student(images, vids)
+            cls_scores, feats = student_reid_output
+            student_module = student.module if hasattr(student, 'module') else student
+            student_kd_feat = student_module.kd_projector(feats)
+            teacher_kd_feat = None
+            if args.kd_loss_lambda > 0 and teacher_frozen is not None:
+                with torch.no_grad():
+                    teacher_kd_feat = teacher_frozen(torch.cat(images[:2], dim=0))
         
-        id_loss, triplet_loss, ssl_loss, cmpt_loss, ssl_loss_class = loss_fn(
+        id_loss, triplet_loss, ssl_loss, cmpt_loss, kd_loss, ssl_loss_class = loss_fn(
                                                     cls_scores, 
                                                     feats, 
                                                     vids1,
                                                     student_ssl_output,
                                                     teacher_ssl_output,
+                                                    student_kd_feat,
+                                                    teacher_kd_feat,
                                                     epoch)
         loss = id_loss + triplet_loss
 
@@ -107,33 +132,49 @@ def train_one_epoch(args,
         if args.cmpt_loss_lambda > 0:
             loss += cmpt_loss
             writer.add_scalar('Loss/CMPT_Loss', cmpt_loss.item(), iteration)
+        
+        if args.kd_loss_lambda > 0 and kd_loss is not None:
+            loss += kd_loss
+            writer.add_scalar('Loss/KD_Loss',
+                    kd_loss.item()/(args.kd_loss_lambda + 1e-12), iteration)
 
         epoch_loss += loss.item()
-        loss.backward()
+        (loss / accum_steps).backward()
         acc = (cls_scores.max(1)[1] == vids1).float().mean()
 
-        if args.clip_grad > 0:
-            clip_gradients(student, args.clip_grad)
+        should_step = ((i + 1) % accum_steps == 0) or ((i + 1) == len(train_loader))
+        if should_step:
+            if args.clip_grad > 0:
+                if args.train_mode == 'teacher_exp_only':
+                    clip_gradients(teacher_frozen, args.clip_grad)
+                else:
+                    clip_gradients(student, args.clip_grad)
 
-        optimizer.step()
+            optimizer.step()
+            optimizer.zero_grad()
 
-        with torch.no_grad():
-            m = args.momentum_teacher
-            for k, v in teacher.state_dict().items():
-                v.copy_(v * m + (1 - m) * \
-                    student.state_dict()['{}'.format(k)].detach())
+            if args.train_mode != 'teacher_exp_only':
+                with torch.no_grad():
+                    m = args.momentum_teacher
+                    for k, v in teacher_ema.state_dict().items():
+                        v.copy_(v * m + (1 - m) * \
+                            student.state_dict()['{}'.format(k)].detach())
             
         if (i + 1) % args.log_freq == 0:
             message = 'epoch: [{0:3d}/{1}] '.format(epoch + 1, args.epochs)
             message += 'iteration: [{0:3d}/{1}] '.format(
                                 i + 1, len(train_loader))
             message += 'lr: {0:.2e} '.format(lr_scheduler[epoch])
+            message += 'accum: {0:d} '.format(accum_steps)
             if args.ssl_loss_lambda > 0:
                 message += 'ssl_loss: {0:.4f} '.format(
                                 ssl_loss.item()/(args.ssl_loss_lambda + 1e-12))
             if args.cmpt_loss_lambda > 0:
                 message += 'compactness_loss: {0:.4f} '.format(
                             cmpt_loss.item()/(args.cmpt_loss_lambda + 1e-12))
+            if args.kd_loss_lambda > 0 and kd_loss is not None:
+                message += 'kd_loss: {0:.4f} '.format(
+                            kd_loss.item()/(args.kd_loss_lambda + 1e-12))
             message += 'id_loss: {0:.4f} '.format(
                             id_loss.item()/args.id_loss_lambda)
             message += 'triplet_loss: {0:.4f} '.format(

@@ -11,11 +11,13 @@ def train(args,
             train_loader,
             val_loader,
             student,
-            teacher,
+            teacher_ema,
+            teacher_frozen,
             loss_fn,
             optimizer,
             lr_scheduler,
-            logger):
+            logger,
+            start_epoch=0):
     
     logger.info('Initial Evaluation ...')
     writer = SummaryWriter(osp.join(args.output_dir, 'TensorBoard'))
@@ -25,19 +27,26 @@ def train(args,
     best_map_ema, best_cmc1_ema, best_cmc5_ema = 0, 0, 0
     best_map_epoch_ema, best_cmc1_epoch_ema, best_cmc5_epoch_ema = 0, 0, 0
     
-    mAP, CMC1, CMC5 = do_eval(args, val_loader, teacher, logger, EMA=True)
-    writer.add_scalar('Accuracy-teacher/mAP', mAP, 0)
-    writer.add_scalar('Accuracy-teacher/CMC1', CMC1, 0)
-    writer.add_scalar('Accuracy-teacher/CMC5', CMC5, 0)
+    if args.train_mode == 'teacher_exp_only':
+        mAP, CMC1, CMC5 = do_eval(args, val_loader, teacher_frozen, logger)
+        writer.add_scalar('Accuracy-teacher_exp/mAP', mAP, start_epoch)
+        writer.add_scalar('Accuracy-teacher_exp/CMC1', CMC1, start_epoch)
+        writer.add_scalar('Accuracy-teacher_exp/CMC5', CMC5, start_epoch)
+    else:
+        mAP, CMC1, CMC5 = do_eval(args, val_loader, teacher_ema, logger, EMA=True)
+        writer.add_scalar('Accuracy-teacher/mAP', mAP, start_epoch)
+        writer.add_scalar('Accuracy-teacher/CMC1', CMC1, start_epoch)
+        writer.add_scalar('Accuracy-teacher/CMC5', CMC5, start_epoch)
     
     logger.info('Start Training ...')
     start = time()
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         train_one_epoch(args,
             epoch,
             train_loader,
             student,
-            teacher,
+            teacher_ema,
+            teacher_frozen,
             loss_fn,
             optimizer,
             lr_scheduler,
@@ -45,39 +54,57 @@ def train(args,
             writer)
         
         if (epoch + 1) % args.eval_freq == 0:
-            mAP_ema, CMC1_ema, CMC5_ema = do_eval(
-                            args, val_loader, teacher, logger, EMA=True)
-            writer.add_scalar('Accuracy-teacher/mAP', mAP_ema, epoch + 1)
-            writer.add_scalar('Accuracy-teacher/CMC1', CMC1_ema, epoch + 1)
-            writer.add_scalar('Accuracy-teacher/CMC5', CMC5_ema, epoch + 1)
+            if args.train_mode == 'teacher_exp_only':
+                mAP_exp, CMC1_exp, CMC5_exp = do_eval(
+                                args, val_loader, teacher_frozen, logger)
+                writer.add_scalar('Accuracy-teacher_exp/mAP', mAP_exp, epoch + 1)
+                writer.add_scalar('Accuracy-teacher_exp/CMC1', CMC1_exp, epoch + 1)
+                writer.add_scalar('Accuracy-teacher_exp/CMC5', CMC5_exp, epoch + 1)
 
-            mAP, CMC1, CMC5 = do_eval(args, val_loader, student, logger)
-            writer.add_scalar('Accuracy-student/mAP', mAP, epoch + 1)
-            writer.add_scalar('Accuracy-student/CMC1', CMC1, epoch + 1)
-            writer.add_scalar('Accuracy-student/CMC5', CMC5, epoch + 1)
+                if mAP_exp > best_map_ema:
+                    best_map_ema, best_map_epoch_ema = mAP_exp, epoch + 1
 
-            if mAP > best_map:
-                best_map, best_map_epoch = mAP, epoch + 1
+                if CMC1_exp > best_cmc1_ema:
+                    best_cmc1_ema, best_cmc1_epoch_ema = CMC1_exp, epoch + 1
 
-            if CMC1 > best_cmc1:
-                best_cmc1, best_cmc1_epoch = CMC1, epoch + 1
+                if CMC5_exp > best_cmc5_ema:
+                    best_cmc5_ema, best_cmc5_epoch_ema = CMC5_exp, epoch + 1
+            else:
+                mAP_ema, CMC1_ema, CMC5_ema = do_eval(
+                                args, val_loader, teacher_ema, logger, EMA=True)
+                writer.add_scalar('Accuracy-teacher/mAP', mAP_ema, epoch + 1)
+                writer.add_scalar('Accuracy-teacher/CMC1', CMC1_ema, epoch + 1)
+                writer.add_scalar('Accuracy-teacher/CMC5', CMC5_ema, epoch + 1)
 
-            if CMC5 > best_cmc5:
-                best_cmc5, best_cmc5_epoch = CMC5, epoch + 1
+                mAP, CMC1, CMC5 = do_eval(args, val_loader, student, logger)
+                writer.add_scalar('Accuracy-student/mAP', mAP, epoch + 1)
+                writer.add_scalar('Accuracy-student/CMC1', CMC1, epoch + 1)
+                writer.add_scalar('Accuracy-student/CMC5', CMC5, epoch + 1)
 
-            if mAP_ema > best_map_ema:
-                best_map_ema, best_map_epoch_ema = mAP_ema, epoch + 1
+                if mAP > best_map:
+                    best_map, best_map_epoch = mAP, epoch + 1
 
-            if CMC1_ema > best_cmc1_ema:
-                best_cmc1_ema, best_cmc1_epoch_ema = CMC1_ema, epoch + 1
+                if CMC1 > best_cmc1:
+                    best_cmc1, best_cmc1_epoch = CMC1, epoch + 1
 
-            if CMC5_ema > best_cmc5_ema:
-                best_cmc5_ema, best_cmc5_epoch_ema = CMC5_ema, epoch + 1
+                if CMC5 > best_cmc5:
+                    best_cmc5, best_cmc5_epoch = CMC5, epoch + 1
+
+                if mAP_ema > best_map_ema:
+                    best_map_ema, best_map_epoch_ema = mAP_ema, epoch + 1
+
+                if CMC1_ema > best_cmc1_ema:
+                    best_cmc1_ema, best_cmc1_epoch_ema = CMC1_ema, epoch + 1
+
+                if CMC5_ema > best_cmc5_ema:
+                    best_cmc5_ema, best_cmc5_epoch_ema = CMC5_ema, epoch + 1
 
         if (epoch + 1) % args.save_ckpt_freq == 0:
             save_dict = {
                 'student': student.state_dict(),
-                'teacher': teacher.state_dict(),
+                'teacher': teacher_ema.state_dict(),
+                'teacher_ema': teacher_ema.state_dict(),
+                'teacher_frozen': teacher_frozen.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch,
                 'args': args}

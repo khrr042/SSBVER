@@ -28,7 +28,7 @@ if __name__ == '__main__':
     from data import build_data
     from models import build_models
     _, val_loader, num_train_classes = build_data(args)
-    student, _ = build_models(args, num_classes=num_train_classes)
+    student, _, _ = build_models(args, num_classes=num_train_classes)
     ckpt = torch.load(args.test_ckpt)
     m = student.load_state_dict(ckpt[args.test_model])
     for p in student.parameters():
