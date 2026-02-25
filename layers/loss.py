@@ -150,3 +150,15 @@ class FeatureKDLoss(nn.Module):
         student_feat = F.normalize(student_feat, dim=-1)
         teacher_feat = F.normalize(teacher_feat, dim=-1)
         return 1 - (student_feat * teacher_feat).sum(dim=-1).mean()
+
+
+class LogitKDLoss(nn.Module):
+    def __init__(self, temperature=3.0):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, student_logits, teacher_logits):
+        t = self.temperature
+        student_log_probs = F.log_softmax(student_logits / t, dim=1)
+        teacher_probs = F.softmax(teacher_logits.detach() / t, dim=1)
+        return F.kl_div(student_log_probs, teacher_probs, reduction='batchmean') * (t * t)

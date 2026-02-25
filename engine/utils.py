@@ -40,6 +40,20 @@ def clip_gradients(model, clip):
                 p.grad.data.mul_(clip_coef)
 
 
+def _unwrap_model(model):
+    return model.module if hasattr(model, 'module') else model
+
+
+def _postneck_and_logits(model_module, backbone_feat):
+    reid_head = model_module.reid_head
+    if reid_head.neck == 'bnneck':
+        postneck_feat = reid_head.bottleneck(backbone_feat)
+    else:
+        postneck_feat = backbone_feat
+    logits = reid_head.classifier(postneck_feat)
+    return postneck_feat, logits
+
+
 def train_one_epoch(args,
             epoch,
             train_loader,
@@ -75,24 +89,35 @@ def train_one_epoch(args,
         vids = vids.cuda()
 
         if args.train_mode == 'teacher_exp_only':
-            teacher_feat = teacher_frozen(torch.cat(images[:2], dim=0))
-            teacher_module = teacher_frozen.module if hasattr(teacher_frozen, 'module') else teacher_frozen
-            cls_scores, feats = teacher_module.reid_head(teacher_feat)
+            teacher_module = _unwrap_model(teacher_frozen)
+            teacher_backbone_feat = teacher_module.backbone(torch.cat(images[:2], dim=0))
+            teacher_postneck_feat, teacher_logits = _postneck_and_logits(
+                teacher_module, teacher_backbone_feat
+            )
+            cls_scores, feats = teacher_logits, teacher_backbone_feat
             vids1 = vids.repeat(2)
             teacher_ssl_output = None
             student_ssl_output = None
             student_kd_feat = None
             teacher_kd_feat = None
+            teacher_kd_logits = None
         else:
             teacher_ssl_output = teacher_ema(images[:2])
             student_ssl_output, student_reid_output, vids1 = student(images, vids)
-            cls_scores, feats = student_reid_output
-            student_module = student.module if hasattr(student, 'module') else student
-            student_kd_feat = student_module.kd_projector(feats)
+            cls_scores, student_backbone_feat = student_reid_output
+            student_module = _unwrap_model(student)
+            student_postneck_feat, _ = _postneck_and_logits(student_module, student_backbone_feat)
+            student_kd_feat = student_module.kd_projector(student_postneck_feat)
+            feats = student_backbone_feat
             teacher_kd_feat = None
+            teacher_kd_logits = None
             if args.kd_loss_lambda > 0 and teacher_frozen is not None:
                 with torch.no_grad():
-                    teacher_kd_feat = teacher_frozen(torch.cat(images[:2], dim=0))
+                    teacher_module = _unwrap_model(teacher_frozen)
+                    teacher_backbone_feat = teacher_module.backbone(torch.cat(images[:2], dim=0))
+                    teacher_kd_feat, teacher_kd_logits = _postneck_and_logits(
+                        teacher_module, teacher_backbone_feat
+                    )
         
         id_loss, triplet_loss, ssl_loss, cmpt_loss, kd_loss, ssl_loss_class = loss_fn(
                                                     cls_scores, 
@@ -102,6 +127,7 @@ def train_one_epoch(args,
                                                     teacher_ssl_output,
                                                     student_kd_feat,
                                                     teacher_kd_feat,
+                                                    teacher_kd_logits,
                                                     epoch)
         loss = id_loss + triplet_loss
 
