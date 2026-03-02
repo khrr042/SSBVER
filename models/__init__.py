@@ -204,7 +204,7 @@ def build_models(args, num_classes=None):
         print("Frozen teacher init from student (same arc): {}".format(m))
 
     if args.frozen_teacher_ckpt:
-        ckpt = torch.load(args.frozen_teacher_ckpt, map_location="cpu", weights_only=False)
+        ckpt = torch.load(args.frozen_teacher_ckpt, map_location="cpu")
         state_dict = _extract_state_dict_from_ckpt(ckpt)
         if state_dict is None:
             raise ValueError("Cannot parse checkpoint state_dict from {}".format(args.frozen_teacher_ckpt))

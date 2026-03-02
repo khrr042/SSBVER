@@ -45,7 +45,7 @@ def main(args):
         start_epoch = 0
 
         if args.resume_ckpt:
-            ckpt = torch.load(args.resume_ckpt, map_location='cpu', weights_only=False)
+            ckpt = torch.load(args.resume_ckpt, map_location='cpu')
             if 'student' in ckpt:
                 m = student.load_state_dict(ckpt['student'], strict=False)
                 logger.info('Student is resumed from {} with message: {}'.format(
@@ -90,7 +90,7 @@ def main(args):
     else:
         import torch
         from engine.evaluator import do_eval
-        ckpt = torch.load(args.test_ckpt, weights_only=False)
+        ckpt = torch.load(args.test_ckpt)
         test_model_key = args.test_model
         if args.test_model == 'teacher' and 'teacher' not in ckpt and 'teacher_ema' in ckpt:
             test_model_key = 'teacher_ema'

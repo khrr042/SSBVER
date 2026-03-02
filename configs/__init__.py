@@ -158,10 +158,6 @@ def get_configs():
     parser.add_argument('--kd_loss_type', type=str, default='cosine',
                 choices=['cosine', 'mse'],
                 help='type of feature KD loss')
-    parser.add_argument('--kd_alpha', type=float, default=0.7,
-                help='weight for logit KD in combined KD loss')
-    parser.add_argument('--kd_temp', type=float, default=3.0,
-                help='temperature for logit KD')
     parser.add_argument('--frozen_teacher_ckpt', type=str, default='',
                 help='optional checkpoint path for frozen teacher weights')
     parser.add_argument('-ssl_loss', type=bool_flag, default=False, 
