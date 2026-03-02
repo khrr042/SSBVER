@@ -3,13 +3,22 @@ from torch import nn
 
 class MultiCropWrapper(nn.Module):
     
-    def __init__(self, backbone, ssl_head, reid_head=None, is_student=True, kd_projector=None):
+    def __init__(
+        self,
+        backbone,
+        ssl_head,
+        reid_head=None,
+        is_student=True,
+        kd_projector=None,
+        ssl_projector=None,
+    ):
         super(MultiCropWrapper, self).__init__()
         self.backbone = backbone
         self.ssl_head = ssl_head
         self.reid_head = reid_head
         self.is_student = is_student
         self.kd_projector = kd_projector if kd_projector is not None else nn.Identity()
+        self.ssl_projector = ssl_projector if ssl_projector is not None else nn.Identity()
 
     def forward(self, x, vids=None):
         
@@ -32,7 +41,8 @@ class MultiCropWrapper(nn.Module):
             
             if self.is_student:
                 if self.ssl_head is not None:
-                    return self.ssl_head(output), \
+                    ssl_output = self.ssl_head(self.ssl_projector(output))
+                    return ssl_output, \
                         self.reid_head(torch.cat(
                                 [output.chunk(num_crops)[0],
                                     output.chunk(num_crops)[1]])), vids.repeat(2)
@@ -42,7 +52,7 @@ class MultiCropWrapper(nn.Module):
                         self.reid_head(output.chunk(num_crops)[0])
             else:
                 if self.ssl_head is not None:
-                    return self.ssl_head(output)
+                    return self.ssl_head(self.ssl_projector(output))
                 else:
                     return output
         else:

@@ -152,6 +152,8 @@ class FeatureKDLoss(nn.Module):
         return 1 - (student_feat * teacher_feat).sum(dim=-1).mean()
 
 
+# 바꿀거임...
+
 class LogitKDLoss(nn.Module):
     def __init__(self, temperature=3.0):
         super().__init__()

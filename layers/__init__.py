@@ -68,13 +68,18 @@ def build_loss_fn(args, num_classes=None):
         else:
             ssl_loss_cmpt = None
         
-        if args.kd_loss_lambda > 0 and teacher_kd_feat is not None and teacher_kd_logits is not None:
+        kd_loss_value = None
+        if args.kd_loss_lambda > 0 and teacher_kd_feat is not None:
             kd_feat_value = kd_feat_loss(student_kd_feat, teacher_kd_feat)
-            kd_logit_value = kd_logit_loss(cls_score, teacher_kd_logits)
-            kd_mix = args.kd_alpha * kd_logit_value + (1 - args.kd_alpha) * kd_feat_value
+
+            # Optional logit KD: use only when enabled and teacher logits are available.
+            if args.kd_alpha > 0 and teacher_kd_logits is not None:
+                kd_logit_value = kd_logit_loss(cls_score, teacher_kd_logits)
+                kd_mix = args.kd_alpha * kd_logit_value + (1 - args.kd_alpha) * kd_feat_value
+            else:
+                kd_mix = kd_feat_value
+
             kd_loss_value = args.kd_loss_lambda * kd_mix
-        else:
-            kd_loss_value = None
         
         return id_loss, trip_loss, ssl_loss_ssl, ssl_loss_cmpt, kd_loss_value, ssl_loss
     

@@ -87,6 +87,10 @@ def get_configs():
     help="""Whether or not to weight normalize the last layer of ssl head""")
     parser.add_argument('--use_bn_in_head', default=False, type=bool_flag,
     help="Whether to use batch normalizations in projection head")
+    parser.add_argument('--decouple_ssl_space', default=False, type=bool_flag,
+    help='use a dedicated SSL projector to separate SSL embedding space from ReID/KD')
+    parser.add_argument('--ssl_proj_hidden_dim', default=0, type=int,
+    help='hidden dim of SSL projector MLP (0 means use backbone embed dim)')
     parser.add_argument('--label_smoothing', type=bool_flag, default=False,
     help='Use of label smoothing for the cross entropy loss of student model')
     parser.add_argument('--label_smoothing_eps', type=float, default=0.2,
