@@ -78,14 +78,6 @@ def _extract_state_dict_from_ckpt(ckpt):
     return None
 
 
-def _build_ssl_projector(embed_dim, hidden_dim):
-    return nn.Sequential(
-        nn.Linear(embed_dim, hidden_dim),
-        nn.GELU(),
-        nn.Linear(hidden_dim, embed_dim),
-    )
-
-
 def build_models(args, num_classes=None):
     student_arc = args.student_arc if args.student_arc else args.model_arc
     teacher_exp_arc = args.teacher_exp_arc if args.teacher_exp_arc else student_arc
@@ -154,34 +146,17 @@ def build_models(args, num_classes=None):
     else:
         kd_projector = nn.Identity()
 
-    if args.decouple_ssl_space:
-        ssl_hidden_dim = (
-            args.ssl_proj_hidden_dim if args.ssl_proj_hidden_dim > 0 else student_embed_dim
-        )
-        student_ssl_projector = _build_ssl_projector(student_embed_dim, ssl_hidden_dim)
-        teacher_ssl_projector = _build_ssl_projector(student_embed_dim, ssl_hidden_dim)
-        print(
-            "Enable SSL embedding decoupling: {} -> {} -> {}".format(
-                student_embed_dim, ssl_hidden_dim, student_embed_dim
-            )
-        )
-    else:
-        student_ssl_projector = nn.Identity()
-        teacher_ssl_projector = nn.Identity()
-
     student = MultiCropWrapper(
         student_backbone,
         student_ssl_head,
         student_reid_head,
         kd_projector=kd_projector,
-        ssl_projector=student_ssl_projector,
     )
     teacher_ema = MultiCropWrapper(
         teacher_ema_backbone,
         teacher_ssl_head,
         teacher_reid_head_ema,
         is_student=False,
-        ssl_projector=teacher_ssl_projector,
     )
     teacher_frozen = MultiCropWrapper(
         teacher_exp_backbone,

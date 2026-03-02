@@ -115,10 +115,9 @@ def train_one_epoch(args,
                 with torch.no_grad():
                     teacher_module = _unwrap_model(teacher_frozen)
                     teacher_backbone_feat = teacher_module.backbone(torch.cat(images[:2], dim=0))
-                    teacher_postneck_feat, teacher_kd_logits = _postneck_and_logits(
+                    teacher_kd_feat, teacher_kd_logits = _postneck_and_logits(
                         teacher_module, teacher_backbone_feat
                     )
-                    teacher_kd_feat = teacher_postneck_feat
         
         id_loss, triplet_loss, ssl_loss, cmpt_loss, kd_loss, ssl_loss_class = loss_fn(
                                                     cls_scores, 
