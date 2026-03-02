@@ -3,13 +3,12 @@ from torch import nn
 
 class MultiCropWrapper(nn.Module):
     
-    def __init__(self, backbone, ssl_head, reid_head=None, is_student=True, kd_projector=None):
+    def __init__(self, backbone, ssl_head, reid_head=None, is_student=True):
         super(MultiCropWrapper, self).__init__()
         self.backbone = backbone
         self.ssl_head = ssl_head
         self.reid_head = reid_head
         self.is_student = is_student
-        self.kd_projector = kd_projector if kd_projector is not None else nn.Identity()
 
     def forward(self, x, vids=None):
         

@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 from torch import nn
 
-from .loss import CrossEntropyLabelSmooth, TripletLoss, SSLLoss, CMPTLoss, FeatureKDLoss
+from .loss import CrossEntropyLabelSmooth, TripletLoss, SSLLoss, CMPTLoss
 
 
 def build_loss_fn(args, num_classes=None):
@@ -29,13 +29,8 @@ def build_loss_fn(args, num_classes=None):
     
     if args.cmpt_loss_lambda:
         cmpt_loss = CMPTLoss(ncrops=args.local_crops_num + 2)
-    
-    if args.kd_loss_lambda > 0:
-        kd_loss = FeatureKDLoss(loss_type=args.kd_loss_type)
-    else:
-        kd_loss = None
 
-    def loss_fn(cls_score, feat, target, student_out, teacher_out, student_kd_feat, teacher_kd_feat, epoch):
+    def loss_fn(cls_score, feat, target, student_out, teacher_out, epoch):
         id_loss = args.id_loss_lambda * cls_loss(cls_score, target)
         trip_loss = args.triplet_loss_lambda * triplet_loss(feat, target)
         
@@ -49,11 +44,6 @@ def build_loss_fn(args, num_classes=None):
         else:
             ssl_loss_cmpt = None
         
-        if args.kd_loss_lambda > 0 and teacher_kd_feat is not None:
-            kd_loss_value = args.kd_loss_lambda * kd_loss(student_kd_feat, teacher_kd_feat)
-        else:
-            kd_loss_value = None
-        
-        return id_loss, trip_loss, ssl_loss_ssl, ssl_loss_cmpt, kd_loss_value, ssl_loss
+        return id_loss, trip_loss, ssl_loss_ssl, ssl_loss_cmpt, ssl_loss
     
     return loss_fn

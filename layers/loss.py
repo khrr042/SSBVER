@@ -135,18 +135,3 @@ class TripletLoss(object):
         else:
             loss = self.ranking_loss(dist_an - dist_ap, y)
         return loss
-
-
-class FeatureKDLoss(nn.Module):
-    def __init__(self, loss_type='cosine'):
-        super().__init__()
-        self.loss_type = loss_type
-
-    def forward(self, student_feat, teacher_feat):
-        teacher_feat = teacher_feat.detach()
-        if self.loss_type == 'mse':
-            return F.mse_loss(student_feat, teacher_feat)
-
-        student_feat = F.normalize(student_feat, dim=-1)
-        teacher_feat = F.normalize(teacher_feat, dim=-1)
-        return 1 - (student_feat * teacher_feat).sum(dim=-1).mean()
