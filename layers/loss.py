@@ -135,3 +135,56 @@ class TripletLoss(object):
         else:
             loss = self.ranking_loss(dist_an - dist_ap, y)
         return loss
+
+
+class FeatureKDLoss(nn.Module):
+    def __init__(self, loss_type='cosine'):
+        super().__init__()
+        self.loss_type = loss_type
+
+    def _match_dim(self, student_feat, teacher_feat):
+        if student_feat.shape[1] == teacher_feat.shape[1]:
+            return student_feat
+        # Align feature dimension for heterogeneous teacher/student backbones.
+        return F.interpolate(
+            student_feat.unsqueeze(1),
+            size=teacher_feat.shape[1],
+            mode='linear',
+            align_corners=False).squeeze(1)
+
+    def forward(self, student_feat, teacher_feat):
+        teacher_feat = teacher_feat.detach()
+        student_feat = self._match_dim(student_feat, teacher_feat)
+        if self.loss_type == 'cosine':
+            student_feat = F.normalize(student_feat, dim=1, p=2)
+            teacher_feat = F.normalize(teacher_feat, dim=1, p=2)
+            return (1 - F.cosine_similarity(
+                student_feat, teacher_feat, dim=1)).mean()
+        return F.mse_loss(student_feat, teacher_feat)
+
+
+class PairwiseKDLoss(nn.Module):
+    def __init__(self, loss_type='cosine'):
+        super().__init__()
+        self.loss_type = loss_type
+
+    def forward(self, student_feat, teacher_feat):
+        teacher_feat = teacher_feat.detach()
+        batch = student_feat.shape[0]
+        if batch <= 1:
+            return student_feat.new_tensor(0.0)
+
+        if self.loss_type == 'cosine':
+            student_feat = F.normalize(student_feat, dim=1, p=2)
+            teacher_feat = F.normalize(teacher_feat, dim=1, p=2)
+            student_rel = torch.mm(student_feat, student_feat.t())
+            teacher_rel = torch.mm(teacher_feat, teacher_feat.t())
+        else:
+            student_rel = torch.cdist(student_feat, student_feat, p=2)
+            teacher_rel = torch.cdist(teacher_feat, teacher_feat, p=2)
+            student_rel = student_rel / (student_rel.detach().mean() + 1e-12)
+            teacher_rel = teacher_rel / (teacher_rel.detach().mean() + 1e-12)
+
+        mask = ~torch.eye(batch, dtype=torch.bool, device=student_feat.device)
+        return F.mse_loss(student_rel[mask], teacher_rel[mask])
+

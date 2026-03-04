@@ -16,6 +16,18 @@ from data import build_data
 from models import build_models
 
 
+def _torch_load(path, map_location=None, weights_only=None):
+    kwargs = {}
+    if map_location is not None:
+        kwargs['map_location'] = map_location
+    if weights_only is None:
+        return torch.load(path, **kwargs)
+    try:
+        return torch.load(path, weights_only=weights_only, **kwargs)
+    except TypeError:
+        return torch.load(path, **kwargs)
+
+
 def build_tf():
     tf = TF.Compose([TF.Resize((256, 256), interpolation=Image.BICUBIC),
                 TF.ToTensor(),
@@ -33,8 +45,8 @@ def show_heatmap_on_image(img, mask):
 def main(args):
 
     _, _, num_train_classes = build_data(args)
-    student, teacher = build_models(args, num_classes=num_train_classes)
-    ckpt = torch.load(args.test_ckpt)
+    student, _, _ = build_models(args, num_classes=num_train_classes)
+    ckpt = _torch_load(args.test_ckpt, map_location='cpu', weights_only=False)
     student.load_state_dict(ckpt[args.test_model], strict=False)
     print('{} model is loaded from {}'.format(args.test_model, args.test_ckpt))
     student = student.module.backbone

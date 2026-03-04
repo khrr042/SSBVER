@@ -26,9 +26,22 @@ def save_configs(args):
             f.close()
 
 def create_folder(args):
-    if args.is_train:
-        if osp.exists(args.output_dir):
-            shutil.rmtree(args.output_dir)
-            os.makedirs(args.output_dir)
-        else:
-            os.makedirs(args.output_dir)
+    if not args.is_train:
+        return
+
+    output_dir = osp.abspath(args.output_dir)
+    cwd = osp.abspath(os.getcwd())
+    root_dir = osp.abspath(os.sep)
+
+    # Never remove the current working directory or filesystem root.
+    if output_dir in (cwd, root_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        return
+
+    # When resuming, keep existing artifacts in output_dir.
+    if getattr(args, 'resume_ckpt', '') and osp.exists(output_dir):
+        return
+
+    if osp.exists(output_dir):
+        shutil.rmtree(output_dir)
+    os.makedirs(output_dir, exist_ok=True)

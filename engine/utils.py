@@ -44,16 +44,27 @@ def train_one_epoch(args,
             epoch,
             train_loader,
             student,
-            teacher,
+            teacher_ema,
+            teacher_frozen,
             loss_fn,
             optimizer,
             lr_scheduler,
             logger, 
             writer=None):
-    
-    student.train()
-    teacher.train()
-    
+
+    train_teacher_only = args.train_mode == 'teacher_exp_only'
+
+    if train_teacher_only:
+        student.eval()
+        teacher_ema.eval()
+        teacher_frozen.train()
+        train_model = teacher_frozen
+    else:
+        student.train()
+        teacher_ema.train()
+        teacher_frozen.eval()
+        train_model = student
+
     epoch_loss = 0
 
     for i, batch in enumerate(train_loader):
@@ -67,25 +78,49 @@ def train_one_epoch(args,
         images = [im.cuda(non_blocking=True) for im in images]
         vids = vids.cuda()
 
-        teacher_ssl_output = teacher(images[:2])
-        student_ssl_output, student_reid_output, vids1 = student(images, vids)
-        cls_scores, feats = student_reid_output
-        
-        id_loss, triplet_loss, ssl_loss, cmpt_loss, ssl_loss_class = loss_fn(
-                                                    cls_scores, 
-                                                    feats, 
-                                                    vids1,
-                                                    student_ssl_output,
-                                                    teacher_ssl_output,
-                                                    epoch)
+        teacher_ssl_output = None
+        student_ssl_output = None
+        teacher_kd_feat = None
+
+        if train_teacher_only:
+            cls_scores, feats, student_kd_feat = train_model(images)
+            vids1 = vids.repeat(2)
+        else:
+            if args.ssl_loss_lambda > 0 or args.cmpt_loss_lambda > 0:
+                teacher_ssl_output = teacher_ema(images[:2])
+            student_ssl_output, student_reid_output, vids1 = student(images, vids)
+            cls_scores, feats, student_kd_feat = student_reid_output
+
+            if args.kd_loss_lambda > 0:
+                with torch.no_grad():
+                    teacher_inputs = images
+                    if isinstance(images, list):
+                        teacher_inputs = torch.cat(images[:2], dim=0) \
+                            if len(images) > 1 else images[0]
+                    teacher_kd_output = teacher_frozen(teacher_inputs)
+                    if isinstance(teacher_kd_output, tuple):
+                        teacher_kd_feat = teacher_kd_output[-1]
+                    else:
+                        teacher_kd_feat = teacher_kd_output
+
+        id_loss, triplet_loss, ssl_loss, cmpt_loss, kd_loss, kd_feat_loss, \
+            kd_pairwise_loss, ssl_loss_class = loss_fn(
+                cls_scores,
+                feats,
+                vids1,
+                student_ssl_output,
+                teacher_ssl_output,
+                epoch,
+                student_kd_feat=student_kd_feat,
+                teacher_kd_feat=teacher_kd_feat)
         loss = id_loss + triplet_loss
 
         writer.add_scalar('Loss/CLS_Loss', 
-                    id_loss.item()/args.id_loss_lambda, iteration)
+                    id_loss.item()/(args.id_loss_lambda + 1e-12), iteration)
         writer.add_scalar('Loss/TRIPLET_Loss', 
-                    triplet_loss.item()/args.triplet_loss_lambda, iteration)
+                    triplet_loss.item()/(args.triplet_loss_lambda + 1e-12), iteration)
 
-        if args.ssl_loss_lambda > 0 :
+        if args.ssl_loss_lambda > 0 and ssl_loss is not None:
             loss += ssl_loss
             writer.add_scalar('Loss/SSL_Loss', 
                     ssl_loss.item()/(args.ssl_loss_lambda + 1e-12), iteration)
@@ -104,9 +139,15 @@ def train_one_epoch(args,
             writer.add_scalar('Stats/Center_Entropy', 
                                     center_entropy.item(), iteration)
 
-        if args.cmpt_loss_lambda > 0:
+        if args.cmpt_loss_lambda > 0 and cmpt_loss is not None:
             loss += cmpt_loss
             writer.add_scalar('Loss/CMPT_Loss', cmpt_loss.item(), iteration)
+
+        if args.kd_loss_lambda > 0 and kd_loss is not None and not train_teacher_only:
+            loss += kd_loss
+            writer.add_scalar('Loss/KD_Total', kd_loss.item(), iteration)
+            writer.add_scalar('Loss/KD_Feature', kd_feat_loss.item(), iteration)
+            writer.add_scalar('Loss/KD_Pairwise', kd_pairwise_loss.item(), iteration)
 
         epoch_loss += loss.item()
         loss.backward()
@@ -117,27 +158,31 @@ def train_one_epoch(args,
 
         optimizer.step()
 
-        with torch.no_grad():
-            m = args.momentum_teacher
-            for k, v in teacher.state_dict().items():
-                v.copy_(v * m + (1 - m) * \
-                    student.state_dict()['{}'.format(k)].detach())
+        if not train_teacher_only:
+            with torch.no_grad():
+                m = args.momentum_teacher
+                for k, v in teacher_ema.state_dict().items():
+                    v.copy_(v * m + (1 - m) * \
+                        student.state_dict()['{}'.format(k)].detach())
             
         if (i + 1) % args.log_freq == 0:
             message = 'epoch: [{0:3d}/{1}] '.format(epoch + 1, args.epochs)
             message += 'iteration: [{0:3d}/{1}] '.format(
                                 i + 1, len(train_loader))
             message += 'lr: {0:.2e} '.format(lr_scheduler[epoch])
-            if args.ssl_loss_lambda > 0:
+            if args.ssl_loss_lambda > 0 and ssl_loss is not None:
                 message += 'ssl_loss: {0:.4f} '.format(
                                 ssl_loss.item()/(args.ssl_loss_lambda + 1e-12))
-            if args.cmpt_loss_lambda > 0:
+            if args.cmpt_loss_lambda > 0 and cmpt_loss is not None:
                 message += 'compactness_loss: {0:.4f} '.format(
                             cmpt_loss.item()/(args.cmpt_loss_lambda + 1e-12))
+            if args.kd_loss_lambda > 0 and kd_loss is not None and not train_teacher_only:
+                message += 'kd_loss: {0:.4f} '.format(
+                    kd_loss.item()/(args.kd_loss_lambda + 1e-12))
             message += 'id_loss: {0:.4f} '.format(
-                            id_loss.item()/args.id_loss_lambda)
+                            id_loss.item()/(args.id_loss_lambda + 1e-12))
             message += 'triplet_loss: {0:.4f} '.format(
-                            triplet_loss.item()/args.triplet_loss_lambda) 
+                            triplet_loss.item()/(args.triplet_loss_lambda + 1e-12))
             message += 'Accuracy: {0:.4f}'.format(acc)
             logger.info(message)
     

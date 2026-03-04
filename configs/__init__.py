@@ -15,6 +15,11 @@ def bool_flag(s):
 
 def get_configs():
     parser = argparse.ArgumentParser(description='SSLBVER', add_help=False)
+    model_arcs = [
+        'vit_small', 'resnet50', 'resnet50_ibn_a', 'resnet101',
+        'vit_base', 'swin_base', 'convnext_base',
+        'mobilenetv3_small', 'mobilenetv3_large'
+    ]
     # ----------------------------------------
     # Data Configuration
     # ----------------------------------------
@@ -65,9 +70,11 @@ def get_configs():
     # ----------------------------------------
     # Model Configuration
     # ----------------------------------------
-    parser.add_argument('--model_arc', type=str, default='vit_small', 
-                    choices=['vit_small', 'resnet50', 'resnet50_ibn_a', 
-                    'resnet101', 'vit_base', 'swin_base', 'convnext_base'])
+    parser.add_argument('--model_arc', type=str, default='vit_small',
+                    choices=model_arcs)
+    parser.add_argument('--teacher_model_arc', type=str, default='',
+                    choices=[''] + model_arcs,
+                    help='frozen teacher architecture; empty means same as model_arc')
     parser.add_argument('--pretrained', type=bool_flag, default=False)
     parser.add_argument('--pretrained_method', type=str, 
                             default='ImageNet', choices=['ImageNet', 'DINO'])
@@ -156,12 +163,32 @@ def get_configs():
                 help='whether to use softmargin or ranking loss')
     parser.add_argument('--triplet_loss_margin', type=float, default=0.3,
                 help='the margin used in hard triplet loss')
+    parser.add_argument('--train_mode', type=str, default='student_ssl',
+                choices=['student_ssl', 'teacher_exp_only'],
+                help='student_ssl: train student with EMA teacher; '
+                     'teacher_exp_only: train expert teacher only')
+    parser.add_argument('--teacher_frozen_ckpt', type=str, default='',
+                help='checkpoint path for frozen expert teacher used by KD')
+    parser.add_argument('--kd_loss_lambda', type=float, default=0.0,
+                help='weight of total KD objective in training')
+    parser.add_argument('--kd_feature_loss_lambda', type=float, default=1.0,
+                help='relative weight of feature KD inside KD objective')
+    parser.add_argument('--kd_pairwise_loss_lambda', type=float, default=1.0,
+                help='relative weight of pairwise KD inside KD objective')
+    parser.add_argument('--kd_loss_type', type=str, default='cosine',
+                choices=['cosine', 'mse'],
+                help='feature KD type; cosine applies L2 normalization')
+    parser.add_argument('--kd_pairwise_type', type=str, default='cosine',
+                choices=['cosine', 'distance'],
+                help='pairwise KD target type (cosine similarity or L2 distance)')
+    parser.add_argument('--kd_warmup_epochs', type=int, default=0,
+                help='linearly ramp KD from 0 to full lambda for stability')
     # ----------------------------------------
     # Testing Configuration
     # ----------------------------------------
     parser.add_argument('--plot_dist', type=bool_flag, default=False)
     parser.add_argument('--test_model', type=str, default='student', 
-                choices=['student', 'teacher'])
+                choices=['student', 'teacher', 'teacher_ema', 'teacher_frozen'])
     parser.add_argument('--cython_eval', type=bool_flag, default=False)
     parser.add_argument('--test_ckpt', type=str, default='')
     parser.add_argument('--test_hflip', type=bool_flag, default=False, 

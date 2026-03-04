@@ -75,7 +75,8 @@ class ReIDHead(nn.Module):
         
         if self.training:
             cls_score = self.classifier(feat)
-            return cls_score, x
+            # pre-neck feature is used for triplet; post-neck for KD.
+            return cls_score, x, feat
         else:
             if self.neck_feat == 'after':
                 return feat

@@ -30,19 +30,25 @@ class MultiCropWrapper(nn.Module):
             # Run the head forward on the concatenated features.
             
             if self.is_student:
+                chunks = output.chunk(num_crops)
+                reid_input = torch.cat([chunks[0], chunks[1]]) if num_crops > 1 else chunks[0]
                 if self.ssl_head is not None:
                     return self.ssl_head(output), \
-                        self.reid_head(torch.cat(
-                                [output.chunk(num_crops)[0],
-                                    output.chunk(num_crops)[1]])), vids.repeat(2)
-                        # self.reid_head(output.chunk(num_crops)[0])
+                        self.reid_head(reid_input), vids.repeat(2)
                 else:
                     return output, \
-                        self.reid_head(output.chunk(num_crops)[0])
+                        self.reid_head(chunks[0])
             else:
                 if self.ssl_head is not None:
                     return self.ssl_head(output)
+                if self.reid_head is not None:
+                    chunks = output.chunk(num_crops)
+                    reid_input = torch.cat([chunks[0], chunks[1]]) \
+                        if num_crops > 1 else chunks[0]
+                    return self.reid_head(reid_input)
                 else:
                     return output
         else:
+            if isinstance(x, list):
+                x = torch.cat(x[:2]) if len(x) > 1 else x[0]
             return self.reid_head(self.backbone(x))

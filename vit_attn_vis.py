@@ -15,6 +15,18 @@ from configs import get_configs
 from att_tools import display_instances
 
 
+def _torch_load(path, map_location=None, weights_only=None):
+    kwargs = {}
+    if map_location is not None:
+        kwargs['map_location'] = map_location
+    if weights_only is None:
+        return torch.load(path, **kwargs)
+    try:
+        return torch.load(path, weights_only=weights_only, **kwargs)
+    except TypeError:
+        return torch.load(path, **kwargs)
+
+
 if __name__ == '__main__':
     warnings.filterwarnings('ignore')
     parser = argparse.ArgumentParser(description='Visualize Self-Attention maps for ViTs', 
@@ -28,8 +40,8 @@ if __name__ == '__main__':
     from data import build_data
     from models import build_models
     _, val_loader, num_train_classes = build_data(args)
-    student, _ = build_models(args, num_classes=num_train_classes)
-    ckpt = torch.load(args.test_ckpt)
+    student, _, _ = build_models(args, num_classes=num_train_classes)
+    ckpt = _torch_load(args.test_ckpt, map_location='cpu', weights_only=False)
     m = student.load_state_dict(ckpt[args.test_model])
     for p in student.parameters():
         p.requires_grad = False

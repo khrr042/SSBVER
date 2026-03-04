@@ -16,6 +16,18 @@ from torchvision import transforms as TF
 from models import resnet, resnet_ibn_a
 
 
+def _torch_load(path, map_location=None, weights_only=None):
+    kwargs = {}
+    if map_location is not None:
+        kwargs['map_location'] = map_location
+    if weights_only is None:
+        return torch.load(path, **kwargs)
+    try:
+        return torch.load(path, weights_only=weights_only, **kwargs)
+    except TypeError:
+        return torch.load(path, **kwargs)
+
+
 class FeatureExtractor():
     """ Class for extracting activations and 
     registering gradients from targetted intermediate layers """
@@ -126,10 +138,11 @@ def get_model(args):
         model = resnet.__dict__[args.model_arc](args)
     elif args.model_arc == 'resnet50_ibn_a':
         model = resnet_ibn_a.__dict__[args.model_arc](args)
+    ckpt_dict = _torch_load(args.ckpt_path, map_location='cpu', weights_only=False)
     try:
-        ckpt = torch.load(args.ckpt_path, map_location='cpu')['student_ema']
+        ckpt = ckpt_dict['student_ema']
     except:
-        ckpt = torch.load(args.ckpt_path, map_location='cpu')['teacher']
+        ckpt = ckpt_dict['teacher']
     state_dict, bn_dict = {}, {}
     for k,v in ckpt.items():
         if 'backbone' in k:
