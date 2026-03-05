@@ -2,6 +2,7 @@ import torch
 from torchvision.transforms import functional as F
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 from .utils import eval_reid, re_ranking
 
@@ -40,6 +41,36 @@ def do_eval(args,
     gf = features[num_q:]
     g_vids = np.asarray(ids[num_q:])
     g_cams = np.asarray(cams[num_q:])
+
+    if args.dump_features:
+        dump_path = args.feature_dump_path
+        if not dump_path:
+            dump_path = os.path.join(
+                args.output_dir,
+                'features_{}_{}.pth'.format(
+                    getattr(args, 'test_model', 'model'),
+                    args.neck_feat))
+        dump_dir = os.path.dirname(dump_path)
+        if dump_dir:
+            os.makedirs(dump_dir, exist_ok=True)
+
+        torch.save({
+            'features': features,
+            'qf': qf,
+            'gf': gf,
+            'q_vids': q_vids,
+            'q_cams': q_cams,
+            'g_vids': g_vids,
+            'g_cams': g_cams,
+            'num_q': num_q,
+            'model_arc': args.model_arc,
+            'test_model': getattr(args, 'test_model', ''),
+            'neck_feat': args.neck_feat,
+        }, dump_path)
+        if logger is not None:
+            logger.info('Features are dumped to {}'.format(dump_path))
+        else:
+            print('Features are dumped to {}'.format(dump_path))
     
     if args.re_rank:
         distmat = re_ranking(qf, 

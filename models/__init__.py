@@ -102,6 +102,66 @@ def _load_state_dict_flexible(model, state_dict, model_name='model'):
     return msg
 
 
+def _log_message(logger, message):
+    if logger is not None:
+        logger.info(message)
+    else:
+        print(message)
+
+
+def resume_training_from_checkpoint(args,
+                                    student,
+                                    teacher_ema,
+                                    teacher_frozen,
+                                    optimizer=None,
+                                    logger=None):
+    start_epoch = 0
+    if not getattr(args, 'resume_ckpt', ''):
+        return start_epoch
+
+    ckpt = _torch_load(args.resume_ckpt, map_location='cpu', weights_only=False)
+    if not isinstance(ckpt, dict):
+        raise TypeError('Resume checkpoint must be a dict, got {}.'.format(type(ckpt)))
+
+    if 'student' in ckpt:
+        m = _load_state_dict_flexible(student, ckpt['student'], model_name='student')
+        _log_message(logger, 'Resume student: {}'.format(m))
+    else:
+        _log_message(logger, 'Resume checkpoint has no `student` key.')
+
+    if 'teacher_ema' in ckpt:
+        m = _load_state_dict_flexible(
+            teacher_ema, ckpt['teacher_ema'], model_name='teacher_ema')
+        _log_message(logger, 'Resume teacher_ema: {}'.format(m))
+    elif 'teacher' in ckpt:
+        m = _load_state_dict_flexible(
+            teacher_ema, ckpt['teacher'], model_name='teacher_ema')
+        _log_message(logger, 'Resume teacher(->teacher_ema): {}'.format(m))
+    else:
+        _log_message(logger, 'Resume checkpoint has no `teacher_ema`/`teacher` key.')
+
+    if 'teacher_frozen' in ckpt:
+        m = _load_state_dict_flexible(
+            teacher_frozen, ckpt['teacher_frozen'], model_name='teacher_frozen')
+        _log_message(logger, 'Resume teacher_frozen: {}'.format(m))
+    else:
+        _log_message(logger, 'Resume checkpoint has no `teacher_frozen` key.')
+
+    if optimizer is not None and 'optimizer' in ckpt:
+        try:
+            optimizer.load_state_dict(ckpt['optimizer'])
+            _log_message(logger, 'Resume optimizer state loaded.')
+        except Exception as e:
+            _log_message(logger, 'Resume optimizer load failed: {}'.format(e))
+
+    if 'epoch' in ckpt:
+        start_epoch = int(ckpt['epoch']) + 1
+
+    _log_message(logger, 'Resume from {} at epoch {}.'.format(
+        args.resume_ckpt, start_epoch))
+    return start_epoch
+
+
 def build_models(args, num_classes=None):
     student_backbone, teacher_ema_backbone, teacher_frozen_backbone, \
         student_embed_dim, teacher_embed_dim, teacher_model_arc = \

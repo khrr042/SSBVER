@@ -145,7 +145,6 @@ class FeatureKDLoss(nn.Module):
     def _match_dim(self, student_feat, teacher_feat):
         if student_feat.shape[1] == teacher_feat.shape[1]:
             return student_feat
-        # Align feature dimension for heterogeneous teacher/student backbones.
         return F.interpolate(
             student_feat.unsqueeze(1),
             size=teacher_feat.shape[1],

@@ -17,7 +17,8 @@ def train(args,
           loss_fn,
           optimizer,
           lr_scheduler,
-          logger):
+          logger,
+          start_epoch=0):
 
     logger.info('Initial Evaluation ...')
     writer = SummaryWriter(osp.join(args.output_dir, 'TensorBoard'))
@@ -44,7 +45,7 @@ def train(args,
 
     logger.info('Start Training ...')
     start = time()
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         train_one_epoch(
             args,
             epoch,

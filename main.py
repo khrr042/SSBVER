@@ -28,7 +28,7 @@ def main(args):
 
     from tools import utils
     from data import build_data
-    from models import build_models
+    from models import build_models, resume_training_from_checkpoint
     from layers import build_loss_fn
     from solver import build_solver
     from engine.trainer import train
@@ -53,6 +53,13 @@ def main(args):
         target_model = teacher_frozen if args.train_mode == 'teacher_exp_only' \
             else student
         optimizer, lr_scheduler = build_solver(args, target_model)
+        start_epoch = resume_training_from_checkpoint(
+            args,
+            student,
+            teacher_ema,
+            teacher_frozen,
+            optimizer=optimizer,
+            logger=logger)
 
         train(args=args,
                 train_loader=train_loader,
@@ -63,7 +70,8 @@ def main(args):
                 loss_fn=loss_fn,
                 optimizer=optimizer,
                 lr_scheduler=lr_scheduler,
-                logger=logger)
+                logger=logger,
+                start_epoch=start_epoch)
     
     else:
         from engine.evaluator import do_eval

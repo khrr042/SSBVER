@@ -16,6 +16,19 @@ def build_loss_fn(args, num_classes=None):
     triplet_loss = TripletLoss(use_margin=args.use_margin,
                                 margin=args.triplet_loss_margin)
     
+    """
+    # MALW (ID Loss & Triplet Loss Momentum update)
+    def MALW_update(model, model_ema):
+        id_loss = cls_loss(model.module.classifier.weight, model.module.classifier.weight)
+        triplet_loss = triplet_loss(model.module.classifier.weight, model.module.classifier.weight
+        lambda_malw = 0.9
+        if cls_loss < triplet_loss:
+        safe_std = max(cls_loss, 1e - 6)
+        id_loss_weight = lambda_malw * id_loss_weight + (1 - lambda_malw) * lambda_malw
+    
+
+    """
+    
     if args.ssl_loss_lambda > 0:
         ssl_loss = SSLLoss(
                     out_dim=args.ssl_dim,

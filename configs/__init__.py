@@ -169,6 +169,8 @@ def get_configs():
                      'teacher_exp_only: train expert teacher only')
     parser.add_argument('--teacher_frozen_ckpt', type=str, default='',
                 help='checkpoint path for frozen expert teacher used by KD')
+    parser.add_argument('--resume_ckpt', type=str, default='',
+                help='path to full training checkpoint to resume')
     parser.add_argument('--kd_loss_lambda', type=float, default=0.0,
                 help='weight of total KD objective in training')
     parser.add_argument('--kd_feature_loss_lambda', type=float, default=1.0,
@@ -193,6 +195,10 @@ def get_configs():
     parser.add_argument('--test_ckpt', type=str, default='')
     parser.add_argument('--test_hflip', type=bool_flag, default=False, 
                 help='Horizontal Flip Augmentation')
+    parser.add_argument('--dump_features', type=bool_flag, default=False,
+                help='save query/gallery features during evaluation')
+    parser.add_argument('--feature_dump_path', type=str, default='',
+                help='path to save dumped features (.pth); default uses output_dir')
     parser.add_argument('--re_rank', type=bool_flag, default=False)
     parser.add_argument('--k1', type=int, default=7)
     parser.add_argument('--k2', type=int, default=2)
