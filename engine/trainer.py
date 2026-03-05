@@ -73,7 +73,7 @@ def train(args,
                     best_cmc1_frozen, best_cmc1_epoch_frozen = CMC1_frozen, epoch + 1
                 if CMC5_frozen > best_cmc5_frozen:
                     best_cmc5_frozen, best_cmc5_epoch_frozen = CMC5_frozen, epoch + 1
-            else:
+            else: #ema teacher의 mAP 출력
                 mAP_ema, CMC1_ema, CMC5_ema = do_eval(
                     args, val_loader, teacher_ema, logger, EMA=True)
                 writer.add_scalar('Accuracy-teacher/mAP', mAP_ema, epoch + 1)

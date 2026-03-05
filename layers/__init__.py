@@ -1,11 +1,18 @@
 import torch.nn.functional as F
 from torch import nn
+from collections import deque
+import torch
 
 from .loss import (CMPTLoss, SSLLoss, CrossEntropyLabelSmooth, FeatureKDLoss,
                    PairwiseKDLoss, TripletLoss)
 
 
 def build_loss_fn(args, num_classes=None):
+
+    id_hist = deque(maxlen=args.adaptive_id_window)
+    metric_hist = deque(maxlen=args.adaptive_id_window)
+    state = {'id_lambada': float(args.id_loss_lambda)}
+
     if args.label_smoothing:
         cls_loss = CrossEntropyLabelSmooth(num_classes=num_classes,
                                             epsilon=args.label_smoothing_eps)
@@ -15,19 +22,6 @@ def build_loss_fn(args, num_classes=None):
 
     triplet_loss = TripletLoss(use_margin=args.use_margin,
                                 margin=args.triplet_loss_margin)
-    
-    """
-    # MALW (ID Loss & Triplet Loss Momentum update)
-    def MALW_update(model, model_ema):
-        id_loss = cls_loss(model.module.classifier.weight, model.module.classifier.weight)
-        triplet_loss = triplet_loss(model.module.classifier.weight, model.module.classifier.weight
-        lambda_malw = 0.9
-        if cls_loss < triplet_loss:
-        safe_std = max(cls_loss, 1e - 6)
-        id_loss_weight = lambda_malw * id_loss_weight + (1 - lambda_malw) * lambda_malw
-    
-
-    """
     
     if args.ssl_loss_lambda > 0:
         ssl_loss = SSLLoss(
@@ -76,6 +70,31 @@ def build_loss_fn(args, num_classes=None):
             ssl_loss_cmpt = args.cmpt_loss_lambda * cmpt_loss(student_out, teacher_out)
         else:
             ssl_loss_cmpt = None
+
+        """
+        MALW update (id std 값과 triplet(metric) std 값에 따라서 가중치 업데이트)
+        
+        """
+
+        id_raw = cls_loss(cls_score, target)
+        metric_raw = triplet_loss(feat, target)
+
+        id_hist.append(id_raw.detach().item())
+        metric_hist.append(metric_raw.detach().item())
+
+        if args.adaptive_id_lambda and len(id_hist) >= 2:
+            id_std = torch.tensor(list(id_hist)).std(unbiased=False).item()
+            metric_std = torch.tensor(list(metric_hist)).std(unbiased=False).item()
+
+            if id_std > metric_std and id_std > 1e-12:
+                new_lambda = 1.0 - (id_std - metric_std) / id_std
+                state['id_lambada'] = args.adaptive_id_alpha * state['id_lambada'] + (1.0 - args.adaptive_id_alpha) * new_lambda
+                state['id_lambada'] = max(args.adaptive_id_min, min(args.adaptive_id_max, state['id_lambada']))
+
+        
+        id_loss = state['id_lambada'] * id_raw
+        trip_loss = args.triplet_loss_lambda * metric_raw
+
 
         kd_feat = cls_score.new_tensor(0.0)
         kd_pairwise = cls_score.new_tensor(0.0)

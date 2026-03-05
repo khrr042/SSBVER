@@ -87,7 +87,7 @@ def get_configs():
     help="""Whether or not to weight normalize the last layer of ssl head""")
     parser.add_argument('--use_bn_in_head', default=False, type=bool_flag,
     help="Whether to use batch normalizations in projection head")
-    parser.add_argument('--label_smoothing', type=bool_flag, default=False,
+    parser.add_argument('--label_smoothing', type=bool_flag, default=True,
     help='Use of label smoothing for the cross entropy loss of student model')
     parser.add_argument('--label_smoothing_eps', type=float, default=0.2,
     help='Label smoothing Value')
@@ -185,6 +185,11 @@ def get_configs():
                 help='pairwise KD target type (cosine similarity or L2 distance)')
     parser.add_argument('--kd_warmup_epochs', type=int, default=0,
                 help='linearly ramp KD from 0 to full lambda for stability')
+    parser.add_argument('--adaptive_id_lambda', type=bool_flag, default=False)
+    parser.add_argument('--adaptive_id_alpha', type=float, default=0.2)
+    parser.add_argument('--adaptive_id_window', type=int, default=50)
+    parser.add_argument('--adaptive_id_min', type=float, default=0.1)
+    parser.add_argument('--adaptive_id_max', type=float, default=1.0)
     # ----------------------------------------
     # Testing Configuration
     # ----------------------------------------
