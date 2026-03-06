@@ -187,3 +187,34 @@ class PairwiseKDLoss(nn.Module):
         mask = ~torch.eye(batch, dtype=torch.bool, device=student_feat.device)
         return F.mse_loss(student_rel[mask], teacher_rel[mask])
 
+
+#interKD용
+
+class LogitKDLoss(nn.Module):
+    def __init__(self, temperature=3.0):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, student_logits, teacher_logits):
+        t = self.temperature
+        student_log_probs = F.log_softmax(student_logits / t, dim=1)
+        teacher_probs = F.softmax(teacher_logits.detach() / t, dim=1)
+        return F.kl_div(student_log_probs, teacher_probs, reduction='batchmean') * (t * t)
+
+
+class InterKD(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, teacher_out, student_out):
+        loss_kd_inter = 0.0
+        count = 0
+        kd_loss = LogitKDLoss()
+        for layer_idx, s_logits in student_out["inter_logits"].items():
+            t_logits = teacher_out["inter_logits"][layer_idx]
+        loss_kd_inter = loss_kd_inter + kd_loss(s_logits, t_logits, self.temperature)
+
+        if count > 0:
+            loss_kd_inter = loss_kd_inter / count
+        
+        return loss_kd_inter
