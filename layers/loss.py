@@ -167,8 +167,29 @@ class PairwiseKDLoss(nn.Module):
         super().__init__()
         self.loss_type = loss_type
 
+    def _match_dim(self, student_feat, teacher_feat):
+        if student_feat.shape[1] == teacher_feat.shape[1]:
+            return student_feat, teacher_feat
+        if student_feat.dim() == 2 and teacher_feat.dim() == 2:
+            if student_feat.shape[1] < teacher_feat.shape[1]:
+                student_feat = F.interpolate(
+                    student_feat.unsqueeze(1),
+                    size=teacher_feat.shape[1],
+                    mode='linear',
+                    align_corners=False).squeeze(1)
+            else:
+                teacher_feat = F.interpolate(
+                    teacher_feat.unsqueeze(1),
+                    size=student_feat.shape[1],
+                    mode='linear',
+                    align_corners=False).squeeze(1)
+            return student_feat, teacher_feat
+        raise RuntimeError('PairwiseKD: unsupported feature shape '
+                           f'{student_feat.shape} vs {teacher_feat.shape}')
+
     def forward(self, student_feat, teacher_feat):
         teacher_feat = teacher_feat.detach()
+        student_feat, teacher_feat = self._match_dim(student_feat, teacher_feat)
         batch = student_feat.shape[0]
         if batch <= 1:
             return student_feat.new_tensor(0.0)
@@ -203,18 +224,57 @@ class LogitKDLoss(nn.Module):
 
 
 class InterKD(nn.Module):
-    def __init__(self):
+    def __init__(self, temperature=3.0):
         super().__init__()
+        self.loss_fn = LogitKDLoss(temperature=temperature)
+
+    def _to_dict(self, x):
+        if isinstance(x, dict):
+            return x
+        return {'default': x}
+
+    def _align_logits(self, student_logits, teacher_logits):
+        if student_logits.shape == teacher_logits.shape:
+            return student_logits, teacher_logits
+        if student_logits.dim() == 2 and teacher_logits.dim() == 2:
+            if student_logits.shape[1] < teacher_logits.shape[1]:
+                student_logits = F.interpolate(
+                    student_logits.unsqueeze(1),
+                    size=teacher_logits.shape[1],
+                    mode='linear',
+                    align_corners=False).squeeze(1)
+            else:
+                teacher_logits = F.interpolate(
+                    teacher_logits.unsqueeze(1),
+                    size=student_logits.shape[1],
+                    mode='linear',
+                    align_corners=False).squeeze(1)
+            return student_logits, teacher_logits
+        raise RuntimeError('InterKD: unsupported logits shape '
+                           f'{student_logits.shape} vs {teacher_logits.shape}')
 
     def forward(self, teacher_out, student_out):
+        if teacher_out is None or student_out is None:
+            if torch.is_tensor(teacher_out):
+                return teacher_out.new_tensor(0.0)
+            return torch.tensor(0.0)
+
+        teacher_dict = self._to_dict(teacher_out)
+        student_dict = self._to_dict(student_out)
+        common_keys = set(teacher_dict.keys()) & set(student_dict.keys())
+        if len(common_keys) == 0:
+            first_val = next(iter(teacher_dict.values()))
+            return torch.zeros((), device=first_val.device, dtype=first_val.dtype)
+
         loss_kd_inter = 0.0
         count = 0
-        kd_loss = LogitKDLoss()
-        for layer_idx, s_logits in student_out["inter_logits"].items():
-            t_logits = teacher_out["inter_logits"][layer_idx]
-        loss_kd_inter = loss_kd_inter + kd_loss(s_logits, t_logits, self.temperature)
+        for layer_idx in common_keys:
+            s_logits = student_dict[layer_idx]
+            t_logits = teacher_dict[layer_idx]
+            s_logits, t_logits = self._align_logits(s_logits, t_logits)
+            loss_kd_inter = loss_kd_inter + self.loss_fn(s_logits, t_logits)
+            count += 1
 
         if count > 0:
             loss_kd_inter = loss_kd_inter / count
-        
         return loss_kd_inter
