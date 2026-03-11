@@ -162,6 +162,13 @@ def resume_training_from_checkpoint(args,
     return start_epoch
 
 
+def load_checkpoint_for_eval(model, state_dict, model_name='model', logger=None):
+    msg = _load_state_dict_flexible(
+        model, _resolve_state_dict(state_dict), model_name=model_name)
+    _log_message(logger, 'Eval {}: {}'.format(model_name, msg))
+    return msg
+
+
 def build_models(args, num_classes=None):
     student_backbone, teacher_ema_backbone, teacher_frozen_backbone, \
         student_embed_dim, teacher_embed_dim, teacher_model_arc = \

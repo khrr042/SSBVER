@@ -28,7 +28,11 @@ def main(args):
 
     from tools import utils
     from data import build_data
-    from models import build_models, resume_training_from_checkpoint
+    from models import (
+        build_models,
+        load_checkpoint_for_eval,
+        resume_training_from_checkpoint,
+    )
     from layers import build_loss_fn
     from solver import build_solver
     from engine.trainer import train
@@ -84,7 +88,11 @@ def main(args):
         if model_key not in ckpt:
             raise KeyError('Model key {} is not found in checkpoint {}'.format(
                 model_key, args.test_ckpt))
-        student.load_state_dict(ckpt[model_key], strict=False)
+        load_checkpoint_for_eval(
+            student,
+            ckpt[model_key],
+            model_name=model_key,
+            logger=logger)
         print('{} model is loaded from {}'.format(args.test_model, args.test_ckpt))
         do_eval(args=args,
                 val_loader=val_loader,
